@@ -1,10 +1,15 @@
 import { createApp } from "./app/app";
+import { connectDatabase } from "./config/database";
+import { env } from "./config/env";
+import logger from "./config/logger";
 
 let app = createApp();
 
 async function startServer(){
-    app.listen(3000,() => {
-        console.log("auth service running on port 3000")
+    await connectDatabase();
+
+    app.listen(env.PORT,() => {
+        logger.info({PORT:env.PORT},"server running on port")
     })
 }
 
