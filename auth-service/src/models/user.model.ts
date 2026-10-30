@@ -27,7 +27,7 @@ const userSchema = new Schema({
 
 export type UserDocumentType = InferSchemaType<typeof userSchema> & { _id:Types.ObjectId};
 
-export const user = model<UserDocumentType>("User",userSchema);
+export const UserModel = model<UserDocumentType>("User",userSchema);
 
 export {userSchema};
 
