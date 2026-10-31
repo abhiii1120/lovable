@@ -2,7 +2,7 @@
  * Data access object for user persistence and auth token hashing.
  */
 import type { HydratedDocument } from "mongoose";
-import {  UserModel, type UserDocumentType } from "../../models/user.model.js";
+import {  UserModel, type UserDocumentType } from "../models/user.model.js";
 
 export type UserDocumentLike = HydratedDocument<UserDocumentType>;
 

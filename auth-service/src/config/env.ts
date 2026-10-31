@@ -1,12 +1,13 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-const requiredEnvKeys = ["PORT", "MONGODB_URI", "NODE_ENV"] as const;
+const requiredEnvKeys = ["PORT", "MONGODB_URI", "NODE_ENV","ACCESS_TOKEN_SECRET"] as const;
 
 export type EnvConfig = {
   PORT: number;
   MONGODB_URI: string;
   NODE_ENV: "development" | "production" | "test";
+  ACCESS_TOKEN_SECRET: string;
 };
 
 const getRequiredEnv = (key: (typeof requiredEnvKeys)[number]): string => {
@@ -23,6 +24,7 @@ export const env: EnvConfig = {
   PORT: Number.parseInt(getRequiredEnv("PORT"), 10),
   MONGODB_URI: getRequiredEnv("MONGODB_URI"),
   NODE_ENV: (process.env.NODE_ENV ?? "development") as EnvConfig["NODE_ENV"],
+  ACCESS_TOKEN_SECRET: getRequiredEnv("ACCESS_TOKEN_SECRET")
 };
 
 if (!Number.isInteger(env.PORT) || env.PORT <= 0) {
