@@ -7,7 +7,11 @@ import type { AuthTokenPayload, RegisterRequestBody } from "../types/user.js";
 import { BadRequestError, ConflictError } from "../utils/error.util.js";
 import { getRefreshTokenCookieOptions } from "../utils/token.util.js";
 import { BuildSuccessResponse } from "../utils/BuildSuccessReponse.js";
-import { createUser, findUserByEmail } from "../dao/user.dao.js";
+import {
+  createUser,
+  findUserByEmail,
+  setRefreshTokenHash,
+} from "../dao/user.dao.js";
 
 const SALT_ROUNDS = 10;
 
@@ -96,62 +100,70 @@ function signTokens(user: { id: string; email: string; name: string }): {
  * @param res - Express response instance.
  * @param user - Authenticated user payload.
  */
-function issueTokens(
+async function issueTokens(
   res: Response,
   user: { id: string; email: string; name: string },
-): void {
+): Promise<{ accessToken: string; refreshToken: string }> {
   const { accessToken, refreshToken } = signTokens(user);
-      // await setRefreshTokenHash(safeUser.id, bcrypt.hashSync(refreshToken, SALT_ROUNDS));
+
+  const refreshTokenHash = await bcrypt.hash(refreshToken, SALT_ROUNDS);
+  await setRefreshTokenHash(user.id, refreshTokenHash);
   res.setHeader("Authorization", `Bearer ${accessToken}`);
   res.cookie("refreshToken", refreshToken, getRefreshTokenCookieOptions());
 
-  BuildSuccessResponse(res, "OK", {
-    UserData: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-    },
-  });
+  return { accessToken, refreshToken };
 }
 
+/**
+ * Register a new user and issues both tokens.
+ * 
+ * @route POST /api/auth/register
+ * @param req - Incoming request containing name, email, and password.
+ * @param res - Express response.
+ */
 export async function register(
-  req: Request<{},{},RegisterRequestBody>,
-  res:Response,
-  next:NextFunction,
-):Promise<void> {
-  const name = validateRequiredString(req.body?.name,"name");
-  const email = validateRequiredString(req.body?.email,"email");
-  const password = validateRequiredString(req.body?.password,"password");
+  req: Request<{}, {}, RegisterRequestBody>,
+  res: Response,
+): Promise<void> {
+  const name = validateRequiredString(req.body?.name, "name");
+  const email = validateRequiredString(req.body?.email, "email");
+  const password = validateRequiredString(req.body?.password, "password");
 
-  if(name.length < 2){
+  if (name.length < 2) {
     throw new BadRequestError("name must be at least 2 character long.");
   }
 
-  if(!isValidEmail(email)){
+  if (!isValidEmail(email)) {
     throw new BadRequestError("Invalid email format.");
   }
 
-  if(password.length < 8){
+  if (password.length < 8) {
     throw new BadRequestError("password must be at least 8 characters long.");
   }
 
   const existingUser = await findUserByEmail(email);
-  if(existingUser){
+  if (existingUser) {
     throw new ConflictError("Email already registered");
   }
 
-  const passwordHash = await bcrypt.hash(password,SALT_ROUNDS);
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const user = await createUser({
     name,
-    email:email.toLowerCase(),
+    email: email,
     passwordHash,
   });
 
   const safeUser = {
-    id:user?._id.toString(),
-    name:user?.name,
-    email:user?.email,
-  }
+    id: user._id.toString(),
+    email: user.email,
+    name: user.name,
+  };
 
+  let { accessToken, refreshToken } = await issueTokens(res, safeUser);
 
+  BuildSuccessResponse(res, "User registered successfully", {
+    UserData: safeUser,
+    accessToken: accessToken,
+  });
 }
+
