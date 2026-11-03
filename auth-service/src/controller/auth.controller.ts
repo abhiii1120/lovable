@@ -3,15 +3,25 @@ import type { NextFunction, Request, Response } from "express";
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 
 import { env } from "../config/env.js";
-import type { AuthTokenPayload, RegisterRequestBody } from "../types/user.js";
-import { BadRequestError, ConflictError } from "../utils/error.util.js";
+import type {
+  AuthTokenPayload,
+  LoginRequestBody,
+  RegisterRequestBody,
+} from "../types/user.js";
+import {
+  BadRequestError,
+  ConflictError,
+  UnauthorizedError,
+} from "../utils/error.util.js";
 import { getRefreshTokenCookieOptions } from "../utils/token.util.js";
 import { BuildSuccessResponse } from "../utils/BuildSuccessReponse.js";
 import {
   createUser,
   findUserByEmail,
+  findUserById,
   setRefreshTokenHash,
 } from "../dao/user.dao.js";
+import { UserModel } from "../models/user.model.js";
 
 const SALT_ROUNDS = 10;
 
@@ -116,7 +126,7 @@ async function issueTokens(
 
 /**
  * Register a new user and issues both tokens.
- * 
+ *
  * @route POST /api/auth/register
  * @param req - Incoming request containing name, email, and password.
  * @param res - Express response.
@@ -167,3 +177,92 @@ export async function register(
   });
 }
 
+/**
+ * Authenticates an existing user and issues both tokens.
+ *
+ * @route POST /api/auth/login
+ * @param req - Incoming request containing email and password.
+ * @param res - Express response.
+ */
+export async function login(
+  req: Request<{}, {}, LoginRequestBody>,
+  res: Response,
+): Promise<void> {
+  const email = validateRequiredString(req.body?.email, "email");
+  const password = validateRequiredString(req.body?.password, "password");
+
+  if (!isValidEmail(email)) {
+    throw new BadRequestError("Invalid email format");
+  }
+
+  if (password.length < 8) {
+    throw new BadRequestError("Password must be at least 8 characters long.");
+  }
+
+  const user = await findUserByEmail(email);
+  if (!user) {
+    throw new BadRequestError("Invalid email or password");
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+  if (!isPasswordValid) {
+    throw new BadRequestError("Invalid email or password");
+  }
+
+  const safeUser = {
+    id: user._id.toString(),
+    email: user.email,
+    name: user.name,
+  };
+
+  let { accessToken, refreshToken } = await issueTokens(res, safeUser);
+
+  BuildSuccessResponse(res, "User login successfully", {
+    UserData: safeUser,
+    accessToken: accessToken,
+  });
+}
+
+/**
+ * Refreshes the access token using an HTTP-only refresh cookie.
+ * 
+ * @route POST /api/auth/refresh
+ * @param req - Incoming request containing the refresh token cookie.
+ * @param res - Express response.
+ */
+export async function refreshToken(req: Request, res: Response): Promise<void> {
+  let refreshToken = req.cookies?.refreshToken as string | undefined;
+  if (!refreshToken) {
+    throw new BadRequestError("Refresh token missing");
+  }
+
+  const decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_SECRET) as {
+    sub?: string;
+    email?: string;
+    name?: string;
+  };
+
+  if (!decoded.sub) {
+    throw new UnauthorizedError("Invalid refresh token.");
+  }
+
+  const user = await findUserById(decoded.sub);
+  if (!user) {
+    throw new UnauthorizedError("Invalid refresh token.");
+  }
+
+  const isRefreshTokenValid = user.refreshTokenHash
+    ? await bcrypt.compare(refreshToken, user.refreshTokenHash)
+    : false;
+
+  if (!isRefreshTokenValid) {
+    throw new UnauthorizedError("Refresh token invalid or revoked");
+  }
+
+  const safeUser = { id: user.id, email: user.email, name: user.name };
+  const { accessToken } = await issueTokens(res, safeUser);
+  BuildSuccessResponse(res, "Token refreshed", {
+    UserData: safeUser,
+    accessToken,
+  });
+}
