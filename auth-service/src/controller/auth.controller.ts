@@ -11,6 +11,7 @@ import type {
 import {
   BadRequestError,
   ConflictError,
+  NotFoundError,
   UnauthorizedError,
 } from "../utils/error.util.js";
 import { getRefreshTokenCookieOptions } from "../utils/token.util.js";
@@ -225,7 +226,7 @@ export async function login(
 
 /**
  * Refreshes the access token using an HTTP-only refresh cookie.
- * 
+ *
  * @route POST /api/auth/refresh
  * @param req - Incoming request containing the refresh token cookie.
  * @param res - Express response.
@@ -236,11 +237,20 @@ export async function refreshToken(req: Request, res: Response): Promise<void> {
     throw new BadRequestError("Refresh token missing");
   }
 
-  const decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_SECRET) as {
+  let decoded: {
     sub?: string;
     email?: string;
     name?: string;
   };
+  try {
+    decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_SECRET) as {
+      sub?: string;
+      email?: string;
+      name?: string;
+    };
+  } catch {
+    throw new UnauthorizedError("Invalid or expired refresh token.");
+  }
 
   if (!decoded.sub) {
     throw new UnauthorizedError("Invalid refresh token.");
@@ -265,4 +275,55 @@ export async function refreshToken(req: Request, res: Response): Promise<void> {
     UserData: safeUser,
     accessToken,
   });
+}
+
+/**
+ * Logs the user out and clears the refresh token state.
+ *
+ * @route POST /api/auth/logout
+ * @param req - Incoming request containing the refresh token cookie.
+ * @param res - Express response.
+ */
+export async function logout(req: Request, res: Response): Promise<void> {
+  const refreshToken = req.cookies?.refreshToken as string | undefined;
+
+  if (refreshToken) {
+    try {
+      const decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_SECRET) as {
+        sub?: string;
+      };
+      if (decoded.sub) {
+        await setRefreshTokenHash(decoded.sub, null);
+      }
+    } catch {}
+  }
+
+  res.clearCookie("refreshToken");
+  BuildSuccessResponse(res, "Logged out successfully");
+}
+
+/**
+ * Returns the current authenticated user profile.
+ * 
+ * @route GET /api/auth/me
+ * @param req - Incoming request with authenticated user attached.
+ * @param res - Express response.
+ */
+export async function me(req:Request,res:Response):Promise<void>{
+  if(!req.user){
+    throw new UnauthorizedError("Unauthenticated user");
+  }
+
+  const user = await findUserById(req.user.id);
+  if(!user){
+    throw new UnauthorizedError("User not found");
+  }
+
+  BuildSuccessResponse(res,"UserInfo fetched successfully",{
+    user:{
+      id:user._id.toString(),
+      name:user.name,
+      email:user.email,
+    }
+  })
 }
