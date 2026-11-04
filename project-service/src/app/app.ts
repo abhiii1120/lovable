@@ -1,5 +1,6 @@
 import  express  from 'express';
 import morgan from 'morgan';
+import router from '../routes/index.routes.js';
 
 export function createApp(){
     let app = express()
@@ -7,6 +8,8 @@ export function createApp(){
     app.use(express.json());
     app.use(express.urlencoded({extended:true}));
     app.use(morgan("dev"));
+
+    app.use('/api/projects',router);
 
     return app
 }
