@@ -51,7 +51,7 @@ spec:
         - name: MONGODB_URI
           valueFrom:
             secretKeyRef:
-              name: auth
+              name: database
               key: AUTH_DB
         - name: ACCESS_TOKEN_EXPIRY
           value: 15m
