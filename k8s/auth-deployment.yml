@@ -12,7 +12,7 @@ spec:
   template:
     metadata:
       labels:
-        name:  auth
+        app: auth
     spec:
       containers:
       - image:  auth-image
@@ -24,7 +24,7 @@ spec:
             memory: "120M"
           limits:
             cpu: "120m"
-            memory: "250m"
+            memory: "250M"
         livenessProbe:
           httpGet:
             path: /_status/healthz
