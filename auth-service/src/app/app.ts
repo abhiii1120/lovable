@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request, type Response } from "express";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import { createAuthRouter } from "../routes/auth.routes.js";
@@ -18,6 +18,13 @@ export function createApp() {
   app.use(cookieParser());
 
   app.use("/api/auth", createAuthRouter());
+
+  app.get("/_status/healthz", (req: Request, res: Response) => {
+    res.status(200).json({
+      message: "Server is Healthy",
+    });
+  });
+
   app.use(errorMiddleware);
 
   return app;
